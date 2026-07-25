@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Initialize bamdriver-go as a standalone git repo and optionally set remote.
+# Initialize bamdriver as a standalone git repo and optionally set remote.
 # Usage:
 #   ./scripts/bootstrap_repo.sh [remote_url]
 
@@ -15,7 +15,7 @@ if [[ -d .git ]]; then
 else
   git init
   git add .
-  git commit -m "chore: bootstrap bamdriver-go module"
+  git commit -m "chore: bootstrap bamdriver module"
 fi
 
 if [[ -n "$REMOTE_URL" ]]; then

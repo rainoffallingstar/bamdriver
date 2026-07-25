@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/rainoffallingstar/bamdriver-go/pkg/bgzip"
+	"github.com/rainoffallingstar/bamdriver/pkg/bgzip"
 )
 
 var (

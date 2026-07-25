@@ -10,15 +10,15 @@ This runbook assumes three local repos:
 
 ```bash
 # Ensure clean trees
-cd /home/fallingstar10/xdxtools/bamdriver-go && git status --short
-cd /home/fallingstar10/xdxtools/xenofilter-go && git status --short
-cd /home/fallingstar10/xdxtools/Paireads && git status --short
+cd /home/fallingstar10/shire/xdxtools/bamdriver && git status --short
+cd /home/fallingstar10/shire/xdxtools/xenofilter-go && git status --short
+cd /home/fallingstar10/shire/xdxtools/Paireads && git status --short
 ```
 
 ## 1) Release bamdriver-go v0.1.0
 
 ```bash
-cd /home/fallingstar10/xdxtools/bamdriver-go
+cd /home/fallingstar10/shire/xdxtools/bamdriver
 
 # Optional: initialize standalone repo if needed
 ./scripts/bootstrap_repo.sh <REMOTE_URL>
@@ -37,32 +37,32 @@ git push origin main --tags
 ## 2) Upgrade xenofilter-go to v0.1.0
 
 ```bash
-cd /home/fallingstar10/xdxtools/bamdriver-go
+cd /home/fallingstar10/shire/xdxtools/bamdriver
 ./scripts/update_consumer.sh ../xenofilter-go v0.1.0
 
-cd /home/fallingstar10/xdxtools/xenofilter-go
+cd /home/fallingstar10/shire/xdxtools/xenofilter-go
 git add go.mod go.sum internal/bgzip internal/bamnative cmd/test_elprep internal/bam internal/bgzip
-git commit -m "refactor: use bamdriver-go v0.1.0"
+git commit -m "refactor: use bamdriver v0.1.0"
 git push
 ```
 
 ## 3) Upgrade Paireads to v0.1.0
 
 ```bash
-cd /home/fallingstar10/xdxtools/bamdriver-go
+cd /home/fallingstar10/shire/xdxtools/bamdriver
 ./scripts/update_consumer.sh ../Paireads v0.1.0
 
-cd /home/fallingstar10/xdxtools/Paireads
+cd /home/fallingstar10/shire/xdxtools/Paireads
 git add go.mod go.sum bamnative internal/bgzip
-git commit -m "refactor: use bamdriver-go v0.1.0"
+git commit -m "refactor: use bamdriver v0.1.0"
 git push
 ```
 
 ## 4) Post-release verification
 
 ```bash
-cd /home/fallingstar10/xdxtools/xenofilter-go && go test ./...
-cd /home/fallingstar10/xdxtools/Paireads && go test ./...
+cd /home/fallingstar10/shire/xdxtools/xenofilter-go && go test ./...
+cd /home/fallingstar10/shire/xdxtools/Paireads && go test ./...
 ```
 
 If `samtools` is available:
@@ -77,11 +77,11 @@ samtools view -c <output.bam> >/dev/null
 
 ```bash
 # In consumers, pin back to local replace (or previous tag) and retest
-cd /home/fallingstar10/xdxtools/xenofilter-go
+cd /home/fallingstar10/shire/xdxtools/xenofilter-go
 # edit go.mod to previous working state, then:
 go mod tidy && go test ./...
 
-cd /home/fallingstar10/xdxtools/Paireads
+cd /home/fallingstar10/shire/xdxtools/Paireads
 # edit go.mod to previous working state, then:
 go mod tidy && go test ./...
 ```

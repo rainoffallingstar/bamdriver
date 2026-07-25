@@ -1,4 +1,4 @@
-module github.com/rainoffallingstar/bamdriver-go
+module github.com/rainoffallingstar/bamdriver
 
 go 1.23
 

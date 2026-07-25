@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/rainoffallingstar/bamdriver-go/pkg/bgzip"
+	"github.com/rainoffallingstar/bamdriver/pkg/bgzip"
 )
 
 // Writer writes BAM files

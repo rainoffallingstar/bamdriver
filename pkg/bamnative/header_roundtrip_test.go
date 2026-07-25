@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/rainoffallingstar/bamdriver-go/pkg/bgzip"
+	"github.com/rainoffallingstar/bamdriver/pkg/bgzip"
 )
 
 func TestHeaderRoundTripPreservesVersionAndOrderedDuplicateLines(t *testing.T) {

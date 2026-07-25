@@ -1,8 +1,8 @@
-# bamdriver-go Release Checklist
+# bamdriver Release Checklist
 
 ## 1) Pre-release validation
 
-Run in `bamdriver-go`:
+Run in `bamdriver`:
 
 ```bash
 go mod tidy
@@ -18,7 +18,7 @@ cd ../Paireads && go test ./...
 
 ## 2) Tag and publish
 
-In `bamdriver-go` repo:
+In the `bamdriver` repo:
 
 ```bash
 ./scripts/release.sh v0.1.0
@@ -32,19 +32,19 @@ In `xenofilter-go/go.mod` and `Paireads/go.mod`:
 1. Change:
 
 ```go
-require github.com/rainoffallingstar/bamdriver-go v0.0.0
+require github.com/rainoffallingstar/bamdriver v0.0.0
 ```
 
 to:
 
 ```go
-require github.com/rainoffallingstar/bamdriver-go v0.1.0
+require github.com/rainoffallingstar/bamdriver v0.1.0
 ```
 
 2. Remove local replace:
 
 ```go
-replace github.com/rainoffallingstar/bamdriver-go => ../bamdriver-go
+replace github.com/rainoffallingstar/bamdriver => ../bamdriver
 ```
 
 3. Run:
@@ -54,7 +54,7 @@ go mod tidy
 go test ./...
 ```
 
-Or from `bamdriver-go`:
+Or from `bamdriver`:
 
 ```bash
 ./scripts/update_consumer.sh ../xenofilter-go v0.1.0
@@ -73,9 +73,7 @@ samtools view -H <output.bam> >/dev/null
 samtools view -c <output.bam> >/dev/null
 ```
 
-## 5) Post-release cleanup (optional)
+## 5) Post-release verification
 
-After one stable release cycle:
-
-- Remove shim/stub files that only forward to `bamdriver-go`.
-- Keep package paths stable only if external users depend on them.
+- Confirm no compatibility shims or legacy import paths remain.
+- Keep package paths rooted at `github.com/rainoffallingstar/bamdriver`.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Release helper for bamdriver-go.
+# Release helper for bamdriver.
 # Usage:
 #   ./scripts/release.sh v0.1.0
 

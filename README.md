@@ -1,4 +1,4 @@
-# bamdriver-go
+# bamdriver
 
 Shared pure-Go BAM/BGZF driver package extracted from `xenofilter-go` and `Paireads`.
 
@@ -11,8 +11,8 @@ Shared pure-Go BAM/BGZF driver package extracted from `xenofilter-go` and `Paire
 
 In consumers, use:
 
-- `require github.com/rainoffallingstar/bamdriver-go v0.0.0`
-- `replace github.com/rainoffallingstar/bamdriver-go => ../bamdriver-go`
+- `require github.com/rainoffallingstar/bamdriver v0.0.0`
+- `replace github.com/rainoffallingstar/bamdriver => ../bamdriver`
 
 For release, replace `v0.0.0` with a tagged version and remove `replace`.
 

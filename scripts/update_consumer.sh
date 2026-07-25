@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Update a consumer module to a published bamdriver-go version.
+# Update a consumer module to a published bamdriver version.
 # Usage:
 #   ./scripts/update_consumer.sh /path/to/consumer v0.1.0
 
@@ -26,18 +26,18 @@ fi
 cd "$CONSUMER_DIR"
 
 # Update requirement
-if rg -q "github.com/rainoffallingstar/bamdriver-go" go.mod; then
-  go mod edit -require=github.com/rainoffallingstar/bamdriver-go@"$VERSION"
+if rg -q "github.com/rainoffallingstar/bamdriver" go.mod; then
+  go mod edit -require=github.com/rainoffallingstar/bamdriver@"$VERSION"
 else
-  go mod edit -require=github.com/rainoffallingstar/bamdriver-go@"$VERSION"
+  go mod edit -require=github.com/rainoffallingstar/bamdriver@"$VERSION"
 fi
 
 # Remove local replace if present
-if rg -q "replace github.com/rainoffallingstar/bamdriver-go" go.mod; then
-  go mod edit -dropreplace=github.com/rainoffallingstar/bamdriver-go || true
+if rg -q "replace github.com/rainoffallingstar/bamdriver" go.mod; then
+  go mod edit -dropreplace=github.com/rainoffallingstar/bamdriver || true
 fi
 
 go mod tidy
 go test ./...
 
-echo "[done] updated $(pwd) to bamdriver-go $VERSION"
+echo "[done] updated $(pwd) to bamdriver $VERSION"
