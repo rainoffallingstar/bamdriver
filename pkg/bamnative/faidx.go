@@ -94,13 +94,14 @@ type FastaIndexEntry struct {
 
 // FastaReader provides streaming FASTA access with optional indexing
 type FastaReader struct {
-	path       string
-	isGzipped  bool
-	entries    map[string]*FastaIndexEntry
-	entryOrder []string
-	cache      map[string][]byte
-	maxCache   int
-	mutex      sync.RWMutex
+	path          string
+	isGzipped     bool
+	referenceFile *os.File
+	entries       map[string]*FastaIndexEntry
+	entryOrder    []string
+	cache         map[string][]byte
+	maxCache      int
+	mutex         sync.RWMutex
 }
 
 // NewFastaReader creates a new FASTA reader with optional indexing
@@ -139,7 +140,25 @@ func NewFastaReader(path string) (*FastaReader, error) {
 		return nil, fmt.Errorf("failed to inspect FASTA index: %w", err)
 	}
 
+	referenceFile, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open indexed FASTA file: %w", err)
+	}
+	reader.referenceFile = referenceFile
+
 	return reader, nil
+}
+
+// Close releases the file descriptor retained for concurrent indexed-region reads.
+func (fr *FastaReader) Close() error {
+	fr.mutex.Lock()
+	defer fr.mutex.Unlock()
+	if fr.referenceFile == nil {
+		return nil
+	}
+	referenceFile := fr.referenceFile
+	fr.referenceFile = nil
+	return referenceFile.Close()
 }
 
 // buildAndSaveIndex builds an index and installs it atomically.
@@ -459,6 +478,88 @@ func parseFastaName(headerText string) string {
 		return ""
 	}
 	return fields[0]
+}
+
+// GetRegion retrieves a 0-based, half-open reference interval. Callers must
+// treat the returned sequence as read-only. Plain FASTA files use their .fai
+// geometry to read only the requested bases; gzip-compressed FASTA files use
+// the sequences loaded during reader initialization.
+func (fr *FastaReader) GetRegion(name string, start, end int64) ([]byte, bool) {
+	if start < 0 || end < start {
+		return nil, false
+	}
+
+	fr.mutex.RLock()
+	entry, resolvedName, found := fr.resolveEntryLocked(name)
+	isGzipped := fr.isGzipped
+	referenceFile := fr.referenceFile
+	if isGzipped && found {
+		sequence, cached := fr.cache[resolvedName]
+		if cached && end <= int64(len(sequence)) {
+			region := append([]byte(nil), sequence[start:end]...)
+			fr.mutex.RUnlock()
+			return region, true
+		}
+	}
+	fr.mutex.RUnlock()
+
+	if !found || end > entry.Length {
+		return nil, false
+	}
+	if isGzipped || referenceFile == nil {
+		return nil, false
+	}
+	return loadRegionFromFile(referenceFile, entry, start, end)
+}
+
+func (fr *FastaReader) resolveEntryLocked(name string) (*FastaIndexEntry, string, bool) {
+	if entry, ok := fr.entries[name]; ok {
+		return entry, name, true
+	}
+	if strings.HasPrefix(name, "chr") {
+		alternativeName := name[3:]
+		if entry, ok := fr.entries[alternativeName]; ok {
+			return entry, alternativeName, true
+		}
+		alternativeName = "chr" + name
+		if entry, ok := fr.entries[alternativeName]; ok {
+			return entry, alternativeName, true
+		}
+		return nil, "", false
+	}
+	alternativeName := "chr" + name
+	entry, ok := fr.entries[alternativeName]
+	return entry, alternativeName, ok
+}
+
+// loadRegionFromFile reads a requested interval while respecting the physical
+// line widths declared by the FASTA index, including CRLF-formatted files.
+func loadRegionFromFile(file *os.File, entry *FastaIndexEntry, start, end int64) ([]byte, bool) {
+	if file == nil || entry == nil || start < 0 || end < start || end > entry.Length || entry.LineB <= 0 || entry.LineL < entry.LineB {
+		return nil, false
+	}
+	if start == end {
+		return []byte{}, true
+	}
+
+	region := make([]byte, 0, end-start)
+	for currentOffset := start; currentOffset < end; {
+		lineOffset := currentOffset % entry.LineB
+		availableOnLine := entry.LineB - lineOffset
+		remaining := end - currentOffset
+		basesToRead := availableOnLine
+		if remaining < basesToRead {
+			basesToRead = remaining
+		}
+		fileOffset := entry.Offset + (currentOffset/entry.LineB)*entry.LineL + lineOffset
+		lineSegment := make([]byte, basesToRead)
+		if _, err := file.ReadAt(lineSegment, fileOffset); err != nil {
+			return nil, false
+		}
+		region = append(region, lineSegment...)
+		currentOffset += basesToRead
+	}
+	return region, true
 }
 
 // HasIndex returns true if index is available.

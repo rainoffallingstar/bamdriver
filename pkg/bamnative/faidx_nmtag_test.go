@@ -129,6 +129,91 @@ func TestFastaReaderConcurrentGetSequence(t *testing.T) {
 	waitGroup.Wait()
 }
 
+func TestFastaReaderGetRegionUsesFastaCoordinates(t *testing.T) {
+	temporaryDirectory := t.TempDir()
+	fastaPath := filepath.Join(temporaryDirectory, "reference.fa")
+	if err := os.WriteFile(fastaPath, []byte(">chr1 description\r\nACGT\r\nTGCA\r\n>chr2\nNNNN\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile FASTA: %v", err)
+	}
+	reader, err := NewFastaReader(fastaPath)
+	if err != nil {
+		t.Fatalf("NewFastaReader: %v", err)
+	}
+
+	testCases := []struct {
+		name      string
+		reference string
+		start     int64
+		end       int64
+		want      string
+		found     bool
+	}{
+		{name: "same line", reference: "chr1", start: 1, end: 3, want: "CG", found: true},
+		{name: "across CRLF lines", reference: "chr1", start: 2, end: 6, want: "GTTG", found: true},
+		{name: "chr fallback", reference: "1", start: 0, end: 4, want: "ACGT", found: true},
+		{name: "empty interval", reference: "chr1", start: 4, end: 4, want: "", found: true},
+		{name: "past end", reference: "chr1", start: 7, end: 9, found: false},
+		{name: "reversed interval", reference: "chr1", start: 4, end: 2, found: false},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			region, found := reader.GetRegion(testCase.reference, testCase.start, testCase.end)
+			if found != testCase.found || string(region) != testCase.want {
+				t.Fatalf("GetRegion(%q, %d, %d) = %q, %v; want %q, %v", testCase.reference, testCase.start, testCase.end, region, found, testCase.want, testCase.found)
+			}
+		})
+	}
+}
+
+func TestFastaReaderCloseDisablesIndexedRegionReads(t *testing.T) {
+	temporaryDirectory := t.TempDir()
+	fastaPath := filepath.Join(temporaryDirectory, "reference.fa")
+	if err := os.WriteFile(fastaPath, []byte(">chr1\nACGT\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile FASTA: %v", err)
+	}
+	reader, err := NewFastaReader(fastaPath)
+	if err != nil {
+		t.Fatalf("NewFastaReader: %v", err)
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if _, found := reader.GetRegion("chr1", 0, 4); found {
+		t.Fatal("GetRegion succeeded after reader close")
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatalf("second Close: %v", err)
+	}
+}
+
+func TestFastaReaderConcurrentGetRegion(t *testing.T) {
+	temporaryDirectory := t.TempDir()
+	fastaPath := filepath.Join(temporaryDirectory, "reference.fa")
+	if err := os.WriteFile(fastaPath, []byte(">chr1\nACGTACGT\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile FASTA: %v", err)
+	}
+	reader, err := NewFastaReader(fastaPath)
+	if err != nil {
+		t.Fatalf("NewFastaReader: %v", err)
+	}
+
+	var waitGroup sync.WaitGroup
+	for workerIndex := 0; workerIndex < 16; workerIndex++ {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			for iteration := 0; iteration < 100; iteration++ {
+				region, found := reader.GetRegion("chr1", 2, 6)
+				if !found || string(region) != "GTAC" {
+					t.Errorf("GetRegion = %q, %v", region, found)
+					return
+				}
+			}
+		}()
+	}
+	waitGroup.Wait()
+}
+
 func TestCalculateNMChecked(t *testing.T) {
 	record := &Record{
 		RefID: 0,
@@ -149,6 +234,34 @@ func TestCalculateNMChecked(t *testing.T) {
 	}
 	if nm != 3 {
 		t.Fatalf("NM = %d, want 3", nm)
+	}
+}
+
+func TestCalculateNMCheckedWindowMatchesFullReference(t *testing.T) {
+	record := &Record{
+		RefID: 0,
+		Pos:   3,
+		Seq:   "CGTTA",
+		Cigar: []CigarOp{
+			{Op: CigarMatch, Len: 2},
+			{Op: CigarDeletion, Len: 1},
+			{Op: CigarMatch, Len: 3},
+		},
+	}
+	fullReference := []byte("AAACGATTA")
+	fullScore, err := CalculateNMChecked(record, fullReference, false)
+	if err != nil {
+		t.Fatalf("CalculateNMChecked: %v", err)
+	}
+	windowScore, err := CalculateNMCheckedWindow(record, []byte("CGATTA"), 3, false)
+	if err != nil {
+		t.Fatalf("CalculateNMCheckedWindow: %v", err)
+	}
+	if windowScore != fullScore {
+		t.Fatalf("window score = %d, want full-reference score %d", windowScore, fullScore)
+	}
+	if _, err := CalculateNMCheckedWindow(record, []byte("CGATTA"), 4, false); err == nil {
+		t.Fatal("CalculateNMCheckedWindow accepted a window after the record start")
 	}
 }
 

@@ -16,8 +16,19 @@ func CalculateNM(record *Record, reference []byte, isBisulfite bool) int {
 
 // CalculateNMChecked calculates NM and rejects malformed CIGAR or truncated input.
 func CalculateNMChecked(record *Record, reference []byte, isBisulfite bool) (int, error) {
+	return CalculateNMCheckedWindow(record, reference, 0, isBisulfite)
+}
+
+// CalculateNMCheckedWindow calculates NM against a reference slice that begins
+// at referenceStart in the record's reference coordinate system. It preserves
+// CalculateNMChecked semantics while allowing callers to fetch only the span
+// consumed by a record's CIGAR.
+func CalculateNMCheckedWindow(record *Record, reference []byte, referenceStart int64, isBisulfite bool) (int, error) {
 	if record == nil {
 		return 0, fmt.Errorf("record is nil")
+	}
+	if referenceStart < 0 {
+		return 0, fmt.Errorf("reference window has negative start %d", referenceStart)
 	}
 	if record.RefID < 0 || record.Flags&FlagUnmapped != 0 {
 		return 0, nil
@@ -25,10 +36,13 @@ func CalculateNMChecked(record *Record, reference []byte, isBisulfite bool) (int
 	if record.Pos < 0 {
 		return 0, fmt.Errorf("record has negative reference position %d", record.Pos)
 	}
+	if int64(record.Pos) < referenceStart {
+		return 0, fmt.Errorf("record position %d precedes reference window start %d", record.Pos, referenceStart)
+	}
 
 	readSequence := []byte(record.Seq)
 	readIndex := 0
-	referenceIndex := int(record.Pos)
+	referenceIndex := int(int64(record.Pos) - referenceStart)
 	nm := 0
 
 	ensureReadAvailable := func(length int, operation byte) error {
