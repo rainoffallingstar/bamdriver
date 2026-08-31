@@ -73,9 +73,31 @@ func CalculateNMCheckedWindow(record *Record, reference []byte, referenceStart i
 			for baseOffset := 0; baseOffset < operation.Len; baseOffset++ {
 				referenceBase := toUpper(reference[referenceIndex+baseOffset])
 				readBase := toUpper(readSequence[readIndex+baseOffset])
-				isBisulfiteConversion := isBisulfite && ((referenceBase == 'C' && readBase == 'T') || (referenceBase == 'G' && readBase == 'A'))
-				if referenceBase != readBase && !isBisulfiteConversion {
+				if referenceBase != readBase && !isBisulfiteConversion(record, referenceBase, readBase, isBisulfite) {
 					nm++
+				}
+			}
+			readIndex += operation.Len
+			referenceIndex += operation.Len
+		case CigarMismatch:
+			if err := ensureReadAvailable(operation.Len, operation.Op); err != nil {
+				return 0, err
+			}
+			if err := ensureReferenceAvailable(operation.Len, operation.Op); err != nil {
+				return 0, err
+			}
+			if !isBisulfite {
+				nm += operation.Len
+				readIndex += operation.Len
+				referenceIndex += operation.Len
+				break
+			}
+			nm += operation.Len
+			for baseOffset := 0; baseOffset < operation.Len; baseOffset++ {
+				referenceBase := toUpper(reference[referenceIndex+baseOffset])
+				readBase := toUpper(readSequence[readIndex+baseOffset])
+				if isBisulfiteConversion(record, referenceBase, readBase, true) {
+					nm--
 				}
 			}
 			readIndex += operation.Len
@@ -87,16 +109,6 @@ func CalculateNMCheckedWindow(record *Record, reference []byte, referenceStart i
 			if err := ensureReferenceAvailable(operation.Len, operation.Op); err != nil {
 				return 0, err
 			}
-			readIndex += operation.Len
-			referenceIndex += operation.Len
-		case CigarMismatch:
-			if err := ensureReadAvailable(operation.Len, operation.Op); err != nil {
-				return 0, err
-			}
-			if err := ensureReferenceAvailable(operation.Len, operation.Op); err != nil {
-				return 0, err
-			}
-			nm += operation.Len
 			readIndex += operation.Len
 			referenceIndex += operation.Len
 		case CigarInsertion:
@@ -131,6 +143,18 @@ func CalculateNMCheckedWindow(record *Record, reference []byte, referenceStart i
 		return 0, fmt.Errorf("CIGAR consumes %d read bases, sequence has %d", readIndex, len(readSequence))
 	}
 	return nm, nil
+}
+
+func isBisulfiteConversion(record *Record, referenceBase byte, readBase byte, isBisulfite bool) bool {
+	if !isBisulfite {
+		return false
+	}
+	// SAM FLAG 0x10 identifies the read sequence as reverse-complemented;
+	// reverse reads therefore use the G-to-A conversion rule.
+	if record.IsReverse() {
+		return referenceBase == 'G' && readBase == 'A'
+	}
+	return referenceBase == 'C' && readBase == 'T'
 }
 
 // toUpper converts byte to uppercase

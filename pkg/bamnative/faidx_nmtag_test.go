@@ -322,6 +322,99 @@ func TestCalculateNMCheckedRejectsTruncatedInputs(t *testing.T) {
 	}
 }
 
+func TestCalculateNMCheckedBisulfiteConversionsAreStrandAware(t *testing.T) {
+	testCases := []struct {
+		name      string
+		flags     uint16
+		reference string
+		sequence  string
+		operation byte
+		wantNM    int
+	}{
+		{
+			name:      "forward C-to-T conversion is ignored",
+			reference: "C",
+			sequence:  "T",
+			operation: CigarMatch,
+			wantNM:    0,
+		},
+		{
+			name:      "forward G-to-A conversion remains a mismatch",
+			reference: "G",
+			sequence:  "A",
+			operation: CigarMatch,
+			wantNM:    1,
+		},
+		{
+			name:      "reverse G-to-A conversion is ignored",
+			flags:     FlagReverse,
+			reference: "G",
+			sequence:  "A",
+			operation: CigarMatch,
+			wantNM:    0,
+		},
+		{
+			name:      "reverse C-to-T conversion remains a mismatch",
+			flags:     FlagReverse,
+			reference: "C",
+			sequence:  "T",
+			operation: CigarMatch,
+			wantNM:    1,
+		},
+		{
+			name:      "X C-to-T conversion uses the same forward rule",
+			reference: "C",
+			sequence:  "T",
+			operation: CigarMismatch,
+			wantNM:    0,
+		},
+		{
+			name:      "X G-to-A conversion uses the same reverse rule",
+			flags:     FlagReverse,
+			reference: "G",
+			sequence:  "A",
+			operation: CigarMismatch,
+			wantNM:    0,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			record := &Record{
+				RefID: 0,
+				Flags: testCase.flags,
+				Pos:   0,
+				Seq:   testCase.sequence,
+				Cigar: []CigarOp{{Op: testCase.operation, Len: 1}},
+			}
+			nm, err := CalculateNMChecked(record, []byte(testCase.reference), true)
+			if err != nil {
+				t.Fatalf("CalculateNMChecked: %v", err)
+			}
+			if nm != testCase.wantNM {
+				t.Fatalf("NM = %d, want %d", nm, testCase.wantNM)
+			}
+		})
+	}
+}
+
+func TestCalculateNMCheckedMismatchOperationCountsInConventionalMode(t *testing.T) {
+	record := &Record{
+		RefID: 0,
+		Pos:   0,
+		Seq:   "C",
+		Cigar: []CigarOp{{Op: CigarMismatch, Len: 1}},
+	}
+
+	nm, err := CalculateNMChecked(record, []byte("C"), false)
+	if err != nil {
+		t.Fatalf("CalculateNMChecked: %v", err)
+	}
+	if nm != 1 {
+		t.Fatalf("NM = %d, want 1 for a one-base X operation", nm)
+	}
+}
+
 func TestCalculateNMCheckedBisulfiteConversions(t *testing.T) {
 	record := &Record{
 		RefID: 0,
@@ -337,7 +430,7 @@ func TestCalculateNMCheckedBisulfiteConversions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CalculateNMChecked bisulfite: %v", err)
 	}
-	if withoutBisulfite != 2 || withBisulfite != 0 {
-		t.Fatalf("NM standard/bisulfite = %d/%d, want 2/0", withoutBisulfite, withBisulfite)
+	if withoutBisulfite != 2 || withBisulfite != 1 {
+		t.Fatalf("NM standard/bisulfite = %d/%d, want 2/1", withoutBisulfite, withBisulfite)
 	}
 }
