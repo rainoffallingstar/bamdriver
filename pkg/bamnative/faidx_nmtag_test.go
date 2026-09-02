@@ -322,6 +322,80 @@ func TestCalculateNMCheckedRejectsTruncatedInputs(t *testing.T) {
 	}
 }
 
+func TestCalculateNMCheckedBisulfiteUsesBismarkGenomeConversionContext(t *testing.T) {
+	testCases := []struct {
+		name          string
+		flags         uint16
+		conversionTag string
+		reference     string
+		sequence      string
+		operation     byte
+		wantNM        int
+	}{
+		{
+			name:          "XG GA overrides forward SAM flag",
+			conversionTag: "GA",
+			reference:     "G",
+			sequence:      "A",
+			operation:     CigarMatch,
+			wantNM:        0,
+		},
+		{
+			name:          "XG CT overrides reverse SAM flag",
+			flags:         FlagReverse,
+			conversionTag: "CT",
+			reference:     "C",
+			sequence:      "T",
+			operation:     CigarMismatch,
+			wantNM:        0,
+		},
+		{
+			name:          "XG GA applies to mismatch CIGAR",
+			flags:         FlagReverse,
+			conversionTag: "GA",
+			reference:     "G",
+			sequence:      "A",
+			operation:     CigarMismatch,
+			wantNM:        0,
+		},
+		{
+			name:      "missing XG retains FLAG fallback",
+			flags:     FlagReverse,
+			reference: "G",
+			sequence:  "A",
+			operation: CigarMatch,
+			wantNM:    0,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			record := &Record{
+				RefID: 0,
+				Flags: testCase.flags,
+				Pos:   0,
+				Seq:   testCase.sequence,
+				Cigar: []CigarOp{{Op: testCase.operation, Len: 1}},
+			}
+			if testCase.conversionTag != "" {
+				record.Aux = []*AuxField{{
+					Tag:   "XG",
+					Type:  AuxTypeString,
+					Value: testCase.conversionTag,
+				}}
+			}
+
+			nm, err := CalculateNMChecked(record, []byte(testCase.reference), true)
+			if err != nil {
+				t.Fatalf("CalculateNMChecked: %v", err)
+			}
+			if nm != testCase.wantNM {
+				t.Fatalf("NM = %d, want %d", nm, testCase.wantNM)
+			}
+		})
+	}
+}
+
 func TestCalculateNMCheckedBisulfiteConversionsAreStrandAware(t *testing.T) {
 	testCases := []struct {
 		name      string

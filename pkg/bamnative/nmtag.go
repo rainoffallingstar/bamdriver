@@ -149,12 +149,34 @@ func isBisulfiteConversion(record *Record, referenceBase byte, readBase byte, is
 	if !isBisulfite {
 		return false
 	}
-	// SAM FLAG 0x10 identifies the read sequence as reverse-complemented;
-	// reverse reads therefore use the G-to-A conversion rule.
+
+	conversionContext := bismarkGenomeConversionContext(record)
+	if conversionContext == "GA" {
+		return referenceBase == 'G' && readBase == 'A'
+	}
+	if conversionContext == "CT" {
+		return referenceBase == 'C' && readBase == 'T'
+	}
+
 	if record.IsReverse() {
 		return referenceBase == 'G' && readBase == 'A'
 	}
 	return referenceBase == 'C' && readBase == 'T'
+}
+
+func bismarkGenomeConversionContext(record *Record) string {
+	if record == nil {
+		return ""
+	}
+	auxiliaryField := record.GetAuxField("XG")
+	if auxiliaryField == nil || auxiliaryField.Type != AuxTypeString {
+		return ""
+	}
+	conversionContext, ok := auxiliaryField.Value.(string)
+	if !ok || (conversionContext != "CT" && conversionContext != "GA") {
+		return ""
+	}
+	return conversionContext
 }
 
 // toUpper converts byte to uppercase
