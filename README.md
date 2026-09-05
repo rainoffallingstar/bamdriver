@@ -1,23 +1,40 @@
 # bamdriver
 
-Shared pure-Go BAM/BGZF driver package extracted from `xenofilter-go` and `Paireads`.
+**A shared pure-Go library for BAM, BGZF, indexing, sorting, and alignment helpers.**
+
+`bamdriver` is the low-level I/O layer extracted for reuse by `xenofilx` and `pairbam`. It is a library first; ordinary workflow users should invoke the higher-level operator that owns their data contract.
 
 ## Packages
 
-- `pkg/bgzip`: BGZF reader/writer and virtual offset helpers.
-- `pkg/bamnative`: BAM reader/writer/sort/index, plus FASTA/NM helpers used by xenofilter.
+- `pkg/bgzip` — BGZF reading, writing, and virtual-offset helpers.
+- `pkg/bamnative` — BAM reading/writing, coordinate sorting, BAI indexing, FASTA access, and NM-related helpers.
 
-## Local Development
+## Use from a consumer
 
-In consumers, use:
+During local multi-repository development:
 
-- `require github.com/rainoffallingstar/bamdriver v0.0.0`
-- `replace github.com/rainoffallingstar/bamdriver => ../bamdriver`
+```go
+require github.com/rainoffallingstar/bamdriver v0.0.0
+replace github.com/rainoffallingstar/bamdriver => ../bamdriver
+```
 
-For release, replace `v0.0.0` with a tagged version and remove `replace`.
+For a published dependency, use a tagged version and remove the local `replace` directive.
 
-## Scripts
+## Validation
 
-- `scripts/bootstrap_repo.sh [remote_url]`: initialize standalone git repo and optional origin.
-- `scripts/release.sh vX.Y.Z`: run tidy/tests and create a release tag.
-- `scripts/update_consumer.sh /path/to/consumer vX.Y.Z`: switch a consumer from local `replace` to a published tag.
+```bash
+go test ./...
+go vet ./...
+```
+
+When changing exported BAM or BGZF behavior, validate at least one downstream consumer such as `xenofilx` or `pairbam`.
+
+## Repository scripts
+
+- `scripts/bootstrap_repo.sh [remote_url]` initializes a standalone repository and optional origin.
+- `scripts/release.sh vX.Y.Z` runs tidy/tests and creates a release tag.
+- `scripts/update_consumer.sh /path/to/consumer vX.Y.Z` switches a consumer from a local replacement to a published tag.
+
+## License and repository
+
+MIT · [rainoffallingstar/bamdriver](https://github.com/rainoffallingstar/bamdriver)
