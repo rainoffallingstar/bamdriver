@@ -20,6 +20,12 @@ replace github.com/rainoffallingstar/bamdriver => ../bamdriver
 
 For a published dependency, use a tagged version and remove the local `replace` directive.
 
+## Gate A reproducibility check
+
+The repository includes a fixture-based BAM preservation workflow at `.github/workflows/gate-a.yml`. It downloads the pinned RNA-PDX `SRR30880970` hg38 BAM/BAI fixture from `fallingstar10/otter-data`, verifies the published SHA-256 values, runs the `bamroundtrip` decode/encode path, creates a new BAI, compares the decoded header and ordered canonical record stream, and independently runs `samtools quickcheck` and `idxstats` through `enva`.
+
+The workflow intentionally starts from an existing alignment fixture. It does not perform read mapping or alignment on GitHub-hosted runners. Round-trip reports, comparison reports, logs, generated BAM/BAI files, and tool-version evidence are uploaded as an Actions artifact, including when a preceding step fails.
+
 ## Validation
 
 ```bash
