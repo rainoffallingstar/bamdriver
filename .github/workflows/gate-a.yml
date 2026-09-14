@@ -29,7 +29,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: rainoffallingstar/enva
-          ref: 7dc3d3681715a136e070b667535c39d30d8e1177
+          ref: f1205bfa661480e450a54f3dcb916d8c24a0856d
           path: .ci/enva
 
       - name: Set up Go
