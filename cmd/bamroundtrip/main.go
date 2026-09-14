@@ -20,7 +20,7 @@ import (
 )
 
 const usageText = `Usage:
-  bamroundtrip roundtrip --input INPUT.bam --output OUTPUT.bam --report REPORT.json
+  bamroundtrip roundtrip --input INPUT.bam --output OUTPUT.bam --report REPORT.json [--index]
   bamroundtrip compare --left LEFT.bam --right RIGHT.bam --report REPORT.json
 
 The comparator intentionally evaluates decoded BAM structure, not compressed
@@ -49,6 +49,7 @@ type roundTripReport struct {
 	CreatedAtUTC    string `json:"created_at_utc"`
 	RecordsWritten  int64  `json:"records_written"`
 	InputHeaderHash string `json:"input_header_hash"`
+	IndexCreated    bool   `json:"index_created"`
 }
 
 func main() {
@@ -86,6 +87,7 @@ func runRoundTrip(arguments []string) error {
 	inputPath := flagSet.String("input", "", "input BAM path")
 	outputPath := flagSet.String("output", "", "output BAM path")
 	reportPath := flagSet.String("report", "", "round-trip report JSON path")
+	buildIndex := flagSet.Bool("index", false, "create a BAI index for the round-trip BAM")
 	if err := flagSet.Parse(arguments); err != nil {
 		return fmt.Errorf("parse roundtrip flags: %w", err)
 	}
@@ -131,6 +133,14 @@ func runRoundTrip(arguments []string) error {
 		return fmt.Errorf("close output BAM: %w", err)
 	}
 
+	indexCreated := false
+	if *buildIndex {
+		if err := bamnative.BuildIndex(*outputPath); err != nil {
+			return fmt.Errorf("build output BAM index: %w", err)
+		}
+		indexCreated = true
+	}
+
 	report := roundTripReport{
 		SchemaVersion:   "gate6.bamdriver-roundtrip/v1",
 		InputPath:       *inputPath,
@@ -138,6 +148,7 @@ func runRoundTrip(arguments []string) error {
 		CreatedAtUTC:    time.Now().UTC().Format(time.RFC3339),
 		RecordsWritten:  recordsWritten,
 		InputHeaderHash: hashHeader(inputReader.Header()),
+		IndexCreated:    indexCreated,
 	}
 	if err := writeJSONReport(*reportPath, report); err != nil {
 		return fmt.Errorf("write round-trip report: %w", err)
