@@ -1,0 +1,157 @@
+name: BAM Gate A
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-bam-roundtrip:
+    name: RNA-PDX BAM preservation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FIXTURE_BASE_URL: https://huggingface.co/datasets/fallingstar10/otter-data/resolve/e51f78415b2797705696065fe4fb45abd0b57c72
+      FIXTURE_DIRECTORY: ci-artifacts/fixture/bamdriver/gate-a/rna-pdx-srr30880970/hg38
+      RATTLER_CACHE_DIR: ${{ runner.temp }}/rattler-cache
+    steps:
+      - name: Checkout bamdriver
+        uses: actions/checkout@v4
+
+      - name: Prepare Gate A evidence directory
+        run: mkdir -p ci-artifacts/{bin,enva,fixture,gate-a,provenance}
+
+      - name: Checkout pinned enva source
+        uses: actions/checkout@v4
+        with:
+          repository: rainoffallingstar/enva
+          ref: d93b7fc7c82593dcaffa56f28b50aad02cca1108
+          path: .ci/enva
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run bamdriver unit tests
+        run: |
+          set -euo pipefail
+          go test ./... 2>&1 | tee ci-artifacts/gate-a/go-test.log
+          go vet ./... 2>&1 | tee ci-artifacts/gate-a/go-vet.log
+
+      - name: Build bamroundtrip and enva
+        run: |
+          set -euo pipefail
+          go build -o ci-artifacts/bin/bamroundtrip ./cmd/bamroundtrip
+          (
+            cd .ci/enva
+            cargo build --release --locked --bin enva
+          ) 2>&1 | tee ci-artifacts/enva/build.log
+
+      - name: Create fixed samtools environment through enva
+        run: |
+          set -euo pipefail
+          mkdir -p "$RATTLER_CACHE_DIR"
+          .ci/enva/target/release/enva create \
+            --yaml testdata/ci/bamdriver-gate-a.yaml \
+            --name bamdriver-gate-a \
+            --force \
+            --clean-cache \
+            --output summary \
+            2>&1 | tee ci-artifacts/enva/create.log
+          .ci/enva/target/release/enva run \
+            --name bamdriver-gate-a \
+            --command 'samtools --version | head -n 1' \
+            2>&1 | tee ci-artifacts/enva/samtools-version.log
+          grep -q '^samtools 1.15.1' ci-artifacts/enva/samtools-version.log
+
+      - name: Download and verify real RNA-PDX BAM fixture
+        run: |
+          set -euo pipefail
+          mkdir -p "$FIXTURE_DIRECTORY"
+          curl --fail --location --silent --show-error \
+            "$FIXTURE_BASE_URL/provenance/checksums.sha256" \
+            --output ci-artifacts/provenance/checksums.sha256
+          grep '  bamdriver/gate-a/' ci-artifacts/provenance/checksums.sha256 \
+            > ci-artifacts/provenance/gate-a-checksums.sha256
+          curl --fail --location --silent --show-error \
+            "$FIXTURE_BASE_URL/bamdriver/gate-a/rna-pdx-srr30880970/hg38/fixture.bam" \
+            --output "$FIXTURE_DIRECTORY/fixture.bam"
+          curl --fail --location --silent --show-error \
+            "$FIXTURE_BASE_URL/bamdriver/gate-a/rna-pdx-srr30880970/hg38/fixture.bam.bai" \
+            --output "$FIXTURE_DIRECTORY/fixture.bam.bai"
+          awk -v bam="$FIXTURE_DIRECTORY/fixture.bam" \
+              -v bai="$FIXTURE_DIRECTORY/fixture.bam.bai" '
+            $2 ~ /bamdriver\/gate-a\/rna-pdx-srr30880970\/hg38\/fixture\.bam$/ { $2 = bam; print; next }
+            $2 ~ /bamdriver\/gate-a\/rna-pdx-srr30880970\/hg38\/fixture\.bam\.bai$/ { $2 = bai; print; next }
+          ' ci-artifacts/provenance/checksums.sha256 \
+            > ci-artifacts/provenance/gate-a-checksums.sha256
+          sha256sum --check ci-artifacts/provenance/gate-a-checksums.sha256
+
+      - name: Run canonical decode and encode round-trip
+        run: |
+          set -euo pipefail
+          ci-artifacts/bin/bamroundtrip roundtrip \
+            --input "$FIXTURE_DIRECTORY/fixture.bam" \
+            --output ci-artifacts/gate-a/roundtrip.bam \
+            --report ci-artifacts/gate-a/roundtrip.json \
+            --index \
+            2>&1 | tee ci-artifacts/gate-a/roundtrip.log
+          ci-artifacts/bin/bamroundtrip compare \
+            --left "$FIXTURE_DIRECTORY/fixture.bam" \
+            --right ci-artifacts/gate-a/roundtrip.bam \
+            --report ci-artifacts/gate-a/comparison.json \
+            2>&1 | tee ci-artifacts/gate-a/comparison.log
+
+      - name: Validate BAM and BAI independently through enva
+        run: |
+          set -euo pipefail
+          .ci/enva/target/release/enva run \
+            --name bamdriver-gate-a \
+            --command 'samtools quickcheck -v ci-artifacts/fixture/bamdriver/gate-a/rna-pdx-srr30880970/hg38/fixture.bam ci-artifacts/gate-a/roundtrip.bam && samtools idxstats ci-artifacts/fixture/bamdriver/gate-a/rna-pdx-srr30880970/hg38/fixture.bam > ci-artifacts/gate-a/input.idxstats.tsv && samtools idxstats ci-artifacts/gate-a/roundtrip.bam > ci-artifacts/gate-a/roundtrip.idxstats.tsv && diff --unified ci-artifacts/gate-a/input.idxstats.tsv ci-artifacts/gate-a/roundtrip.idxstats.tsv' \
+            2>&1 | tee ci-artifacts/gate-a/samtools-validation.log
+
+      - name: Assert Gate A preservation report
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          report_directory = Path('ci-artifacts/gate-a')
+          roundtrip = json.loads((report_directory / 'roundtrip.json').read_text())
+          comparison = json.loads((report_directory / 'comparison.json').read_text())
+          assert roundtrip['records_written'] == 51140
+          assert roundtrip['index_created'] is True
+          assert comparison['headers_equal'] is True
+          assert comparison['records_equal'] is True
+          assert comparison['records_compared'] == 51140
+          assert comparison['equal'] is True
+          PY
+
+      - name: Remove Gate A environment through enva
+        if: always()
+        run: |
+          set -euo pipefail
+          if .ci/enva/target/release/enva validate --name bamdriver-gate-a \
+            > ci-artifacts/enva/pre-remove-validate.log 2>&1; then
+            .ci/enva/target/release/enva remove bamdriver-gate-a \
+              2>&1 | tee ci-artifacts/enva/remove.log
+          fi
+
+      - name: Upload Gate A evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bamdriver-gate-a-rna-pdx-evidence
+          path: ci-artifacts/
+          if-no-files-found: warn
+          retention-days: 90
