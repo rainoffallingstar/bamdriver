@@ -18,7 +18,6 @@ jobs:
     env:
       FIXTURE_BASE_URL: https://huggingface.co/datasets/fallingstar10/otter-data/resolve/e51f78415b2797705696065fe4fb45abd0b57c72
       FIXTURE_DIRECTORY: ci-artifacts/fixture/bamdriver/gate-a/rna-pdx-srr30880970/hg38
-      RATTLER_CACHE_DIR: ${{ runner.temp }}/rattler-cache
     steps:
       - name: Checkout bamdriver
         uses: actions/checkout@v4
@@ -60,6 +59,7 @@ jobs:
       - name: Create fixed samtools environment through enva
         run: |
           set -euo pipefail
+          export RATTLER_CACHE_DIR="${RUNNER_TEMP:-/tmp}/rattler-cache"
           mkdir -p "$RATTLER_CACHE_DIR"
           .ci/enva/target/release/enva create \
             --yaml testdata/ci/bamdriver-gate-a.yaml \
