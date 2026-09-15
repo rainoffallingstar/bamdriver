@@ -160,15 +160,36 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
+          # Read the actual Gate A reports so the briefing carries measured values rather than a
+          # restatement of what the assertions were supposed to prove.
+          bash scripts/ci/summary-field.sh \
+            ci-artifacts/gate-a/roundtrip.json#records_written \
+            ci-artifacts/gate-a/roundtrip.json#index_created \
+            ci-artifacts/gate-a/comparison.json#headers_equal \
+            ci-artifacts/gate-a/comparison.json#records_compared \
+            ci-artifacts/gate-a/comparison.json#records_equal \
+            ci-artifacts/gate-a/comparison.json#left_record_digest \
+            ci-artifacts/gate-a/comparison.json#right_record_digest \
+            > ci-artifacts/gate-a/summary-fields.txt
+          field() { rg -N "^$1=" ci-artifacts/gate-a/summary-fields.txt | head -n 1 | cut -d= -f2-; }
+          left_record_digest="$(field left_record_digest)"
+          right_record_digest="$(field right_record_digest)"
+          if [ -n "${left_record_digest}" ] && [ "${left_record_digest}" = "${right_record_digest}" ]; then
+            digest_status="identical (${left_record_digest%"${left_record_digest#????????????}"}...)"
+          else
+            digest_status="left and right differ"
+          fi
           bash scripts/ci/job-summary.sh \
             --verdict "${{ job.status }}" \
             --title "bamdriver — Gate A BAM round-trip" \
-            --checked "Decodes a real RNA-PDX BAM, re-encodes it, and asserts that the header and the ordered canonical record stream survive the round trip unchanged, with an index written and both files structurally valid." \
-            --check "Header preservation|decoded header equals re-encoded header|see step log|-" \
-            --check "Record stream preservation|ordered canonical records identical|see step log|-" \
-            --check "BAI index written|--index produces an index|see step log|-" \
-            --check "Structural validity|samtools quickcheck passes on both files|see step log|-" \
-            --metric "Fixture|real RNA-PDX BAM (checksum-pinned)" \
+            --checked "Decodes a real RNA-PDX BAM, re-encodes it with the native BGZF writer, and compares the header and the ordered canonical record stream against the input. Both files are then validated independently with samtools." \
+            --check "Records written by the round trip|51140|$(field records_written)|-" \
+            --check "Header preservation|decoded equal to re-encoded|$(field headers_equal)|-" \
+            --check "Record stream preservation|ordered canonical records identical|$(field records_equal)|-" \
+            --check "Records compared|51140|$(field records_compared)|-" \
+            --check "BAI index written|true|$(field index_created)|-" \
+            --check "Canonical record digest|left and right identical|${digest_status}|-" \
+            --metric "Fixture|real RNA-PDX BAM SRR30880970 (hg38, checksum-pinned)" \
             --artifact "bamdriver-gate-a-rna-pdx-evidence" \
-            --limit "Byte-level round-trip fidelity of the BAM writer on the pinned fixture. It is not a mapping-accuracy or classification claim; NM/score semantics are Gate C's scope." \
+            --limit "Byte-level round-trip fidelity of the BAM/BGZF writer on one real fixture. It is not a mapping-accuracy or classification claim; NM and score semantics are Gate C's scope." \
             --note "This gate is what lets the native BGZF writer stand in for samtools in downstream tools without silent corruption."
