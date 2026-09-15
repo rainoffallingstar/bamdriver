@@ -155,3 +155,20 @@ jobs:
           path: ci-artifacts/
           if-no-files-found: warn
           retention-days: 90
+
+      - name: Job summary
+        if: always()
+        continue-on-error: true
+        run: |
+          bash scripts/ci/job-summary.sh \
+            --verdict "${{ job.status }}" \
+            --title "bamdriver — Gate A BAM round-trip" \
+            --checked "Decodes a real RNA-PDX BAM, re-encodes it, and asserts that the header and the ordered canonical record stream survive the round trip unchanged, with an index written and both files structurally valid." \
+            --check "Header preservation|decoded header equals re-encoded header|see step log|-" \
+            --check "Record stream preservation|ordered canonical records identical|see step log|-" \
+            --check "BAI index written|--index produces an index|see step log|-" \
+            --check "Structural validity|samtools quickcheck passes on both files|see step log|-" \
+            --metric "Fixture|real RNA-PDX BAM (checksum-pinned)" \
+            --artifact "bamdriver-gate-a-rna-pdx-evidence" \
+            --limit "Byte-level round-trip fidelity of the BAM writer on the pinned fixture. It is not a mapping-accuracy or classification claim; NM/score semantics are Gate C's scope." \
+            --note "This gate is what lets the native BGZF writer stand in for samtools in downstream tools without silent corruption."
